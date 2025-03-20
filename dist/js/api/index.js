@@ -46,5 +46,14 @@ export const api = {
             method: "GET",
         })
         return leads;
+    },
+
+    async getLead(leadId) {
+        const waitHandler = new Promise(res => {
+            setTimeout(() => res(true), 1000)
+        })
+        await waitHandler;
+        const lead = await apiInstance(`/api/v4/leads/${leadId}`);
+        return lead;
     }
 }
