@@ -1,149 +1,185 @@
-import {api} from "../api/index.js";
+import { api } from "../api/index.js";
 import Spinner from "./spinner.js"
 import contacts from "./contacts.js"
+import { CustomDate } from "./date.js";
+import task from "./task.js";
+
 class Leads {
     constructor() {
-        console.log("fsef")
-        this.queue = [];
         this.isLoading = true;
         this.leads = [];
         this.leadsSpinner = Spinner.getHtml();
-        this.openLead = -1;
-        this.openLeadLoading = false;
-        this.openLeadInfo = null;
-        this.openLeadModalDom = null;
+        this.leadIsLoading = false;
+        this.openLeadId = null;
+        this.openLeadInfoDom = null;
+        this.leadSpinner = null;
     }
-
-    async closeModal() {
-        if (this.isLoading) {
-            const waitHandler = new Promise((res) => {
-                setTimeout(() => {res(true)}, 1000)
-            })
-            await waitHandler;
-        }
-        this.openLeadModalDom.remove();
-        this.openLeadModalDom = null;
-        const body = document.querySelector("body")
-        body.classList.remove("open-modal")
+    getLeadDom(id) {
+        return document.getElementById(`lead-${id}`)
     }
-
-    async openLeadModal() {
-        const modal = document.createElement("div");
-        modal.addEventListener("click", () => {
-            this.closeModal();
-        })
-        const modalContent = document.createElement("div")
-        modalContent.addEventListener("click", (e) => {
-            e.stopPropagation();
-        })
-        modalContent.classList.add("modal-content")
-        modal.append(modalContent);
-        if (this.openLeadLoading === true) {
-            modal.classList.add("loading")
+    async closeAllLeads() {
+        if (this.leadSpinner) {
+            this.leadSpinner.remove();
         }
-        const body = document.querySelector("body")
-            if (body.classList.contains("open-modal")) {
-                return;
-            } else {
-                this.openLeadModalDom = modal;
-                modal.classList.add("modal")
-                body.classList.add("open-modal")
-                body.append(modal);
+        this.openLeadInfoDom?.remove();
+
+        const leads = document.querySelector(".leads");
+        for (let lead of leads.children) {
+            if (lead) {
+                lead.classList.remove("loading");
+                lead.classList.remove("open");
             }
+        }
+        this.openLeadId = null;
+        this.leadIsLoading = false;
     }
 
     async leadClick(lead) {
-        this.openLead = lead.id;
-        this.openLeadLoading = true;
-        this.openLeadModal();
-        const fieldValues = await api.getLead(lead.id);
-        this.openLeadLoading = false;
-        this.openLeadModalDom.classList.remove("loading")
+        const isCurrentLeadAlreadyOpened = lead.id === this.openLeadId;
+        if (isCurrentLeadAlreadyOpened) {
+            await this.closeAllLeads(lead);
+            return;
+        }
+
+        const leadDom = this.getLeadDom(lead.id);
+        await this.closeAllLeads();
+        this.leadIsLoading = true;
+        this.openLeadId = lead.id;
+        leadDom.classList.add("loading");
+        if (this.leadSpinner) {
+            this.leadSpinner.remove();
+        }
+        this.leadSpinner = Spinner.getHtmlBody();
+        leadDom.append(this.leadSpinner);
+        this.leadIsLoading = false;
+        const taskStatus = await task.getTaskStatus(lead);
+        leadDom.classList.remove("loading");
+        if (lead.id === this.openLeadId) {
+            leadDom.classList.add("open")
+            this.openLeadInfoDom?.remove();
+            this.openLeadInfoDom = document.createElement("div");
+            const taskStatusHtml = task.getTaskStatusHTML(taskStatus);
+            const leadCreateDate = CustomDate.getFormatDate(new Date(lead.created_at * 1000));
+            this.openLeadInfoDom.innerHTML = `
+                <div>Дата создания сделки: ${leadCreateDate}</div>
+                <div>
+                        ${taskStatusHtml}
+                </div>
+                `;
+            this.leadSpinner.remove();
+            leadDom.append(this.openLeadInfoDom)
+        }
     }
 
-    async renderLeads() { 
+    async updateLeadsLoading() {
         const leadsDom = document.querySelector(".leads");
-        const leadsBody = document.querySelector(".leads__body")
         if (this.isLoading) {
             if (!leadsDom.classList.contains("leads-isLoading")) {
                 leadsDom.classList.add("leads-isLoading")
-                leadsDom.append(this.leadsSpinner); 
+                leadsDom.append(this.leadsSpinner);
             }
             return;
         } else {
             leadsDom.classList.remove("leads-isLoading")
             this.leadsSpinner.remove();
-             // leadsDom.remove(this.leadsSpinner); 
         }
-        if (this.leads.length === 0) {
-            leadsBody.innerHTML = "Карточки сделок пуста. Чтобы увидеть их тут добавьте карточки из amoCRM"
-            return;
-        }
+
+    }
+
+    async renderEmptyLeads() {
+        const leadsDom = document.querySelector(".leads");
+        leadsDom.innerHTML = "Карточки сделок пуста. Чтобы увидеть их тут добавьте карточки из amoCRM"
+    }
+
+    async renderLeadList() {
+        const leadsList = document.querySelector(".leads");
+
         for (let lead of this.leads) {
-            const leadCol = document.createElement("tr");
-            leadCol.addEventListener("click", () => {
+            const leadMain = document.createElement("div")
+            const leadBrief = document.createElement("div");
+
+            leadBrief.classList.add("lead__brief")
+            leadMain.classList.add("lead");
+            leadMain.setAttribute("id", `lead-${lead.id}`)
+            leadMain.addEventListener("click", () => {
                 this.leadClick(lead)
             })
-            const fields = [lead.id, lead.name, lead.price,null, null];
+
+            const columns = [
+                `id сделки: ${lead.id}`,
+                `Название сделки:${lead.name}`,
+                `Бюджет: ${lead.price}`,
+                null,
+                null
+            ];
+
             for (let contact of lead.contacts) {
                 const contactInfo = contacts.getContactInfo(contact);
                 if (contactInfo === false) {
                     continue;
                 }
-                fields[3] = contactInfo.name;
-                fields[4] = contactInfo.description;
+                columns[3] = `Название контакта: ${contactInfo.name}`;
+                columns[4] = contactInfo.description;
             }
-            for (let field of fields) {
-                const td = document.createElement("td")
-                td.innerHTML = field;
-                leadCol.append(td)
+            for (let column of columns) {
+                const leadRow = document.createElement("div")
+                leadRow.innerHTML = column;
+                leadBrief.append(leadRow)
             }
-            leadsBody.append(leadCol); 
+
+            leadMain.append(leadBrief)
+            leadsList.append(leadMain);
         }
     }
 
-     async getLeads() {
-        let curPage = 1;
-        const limit = 2;
-        const limitMs = 10;
-        
-        const onFinish = () => {
-            this.isLoading = false;
-            this.renderLeads();
+    async renderPage() {
+        this.updateLeadsLoading();
+        const isLeadsLoading = this.isLoading;
+        if (isLeadsLoading) {
             return;
         }
 
+        const isLeadsEmpty = this.leads.length === 0;
+        if (isLeadsEmpty) {
+            return this.renderEmptyLeads();
+        }
+
+        this.renderLeadList();
+    }
+
+    async getLeads() {
+        let curPage = 1;
+        const limit = 2;
+        const limitMs = 10;
+        const onFinish = () => {
+            this.isLoading = false;
+            this.renderPage();
+            return;
+        }
+
+        this.isLoading = true;
+        this.renderPage();
+        this.leads = [];
+
         const fetchLeads = async () => {
             try {
-            const leads = await api.getLeads({page: curPage, limit, with: "contacts"});
-            if (leads.status !== 200) {
-                throw new Error();
-            } 
-            const leadsData = await leads.json();
-            for (let lead of leadsData._embedded.leads) {
-                    lead["contacts"] ??= [];                
-                    for (let contact of lead._embedded.contacts) {
-                    try {
-                    const contactRes = await api.getContact(contact.id)
-                    lead["contacts"].push(contactRes)
-                    } catch(e) {
-                    console.log(e)
-                    }
+                const chunkLeads = await api.getLeads({
+                    page: curPage, limit, with: "contacts"
+                });
+                for (let lead of chunkLeads) {
+                    lead["contacts"] = await contacts.getContactsFromLead(lead);
                 }
-            }
-            this.leads.push(...leadsData._embedded.leads)
-            curPage++;
-            this.renderLeads()
-            setTimeout(fetchLeads,  limitMs)
-            } catch(e) {
-                console.log(e)
+                this.leads.push(...chunkLeads)
+                curPage++;
+                setTimeout(fetchLeads, limitMs)
+            } catch (e) {
                 onFinish();
                 return;
             }
         }
         setTimeout(fetchLeads, limitMs)
-        this.renderLeads();
     }
 }
 
 export default new Leads();
+

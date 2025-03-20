@@ -1,12 +1,17 @@
 class Spinner {
-    constructor() {};
+    constructor() { };
     static getHtml() {
         const spinner = document.createElement("div")
         spinner.classList.add("spinner")
         const spinnerBody = document.createElement("div")
         spinnerBody.classList.add("spinner__body");
         spinner.append(spinnerBody)
-            return spinner;
+        return spinner;
+    }
+    static getHtmlBody() {
+        const spinnerBody = document.createElement("div")
+        spinnerBody.classList.add("spinner__body");
+        return spinnerBody;
     }
 }
 
